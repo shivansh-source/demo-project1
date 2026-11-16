@@ -22,8 +22,8 @@ def test_get_runtime_is_cached() -> None:
 
 
 def test_worker_fails_at_startup_on_bad_config(settings_env: Any) -> None:
-    settings_env(reasoning_enabled="true", anthropic_api_key="")
-    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+    settings_env(reasoning_enabled="true", groq_api_key="")
+    with pytest.raises(ValueError, match="GROQ_API_KEY"):
         entrypoint.main()
 
 

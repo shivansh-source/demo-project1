@@ -27,6 +27,27 @@ TABLES = "crm_pushes, lead_scores, leads, import_row_errors, import_batches, com
 
 
 @pytest.fixture(autouse=True)
+def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """A developer's .env (real API keys, REASONING_ENABLED=true, a real CRM) must never leak into
+    tests: environment variables outrank .env, so pin the safe values here."""
+    from app.core.config import get_settings
+
+    for key, value in {
+        "REASONING_ENABLED": "false",
+        "REASONING_PROVIDER": "groq",
+        "GROQ_API_KEY": "",
+        "ANTHROPIC_API_KEY": "",
+        "CRM_PROVIDER": "mock",
+        "CRM_API_TOKEN": "",
+        "ENRICHMENT_PROVIDER": "mock",
+    }.items():
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def fake_redis() -> Iterator[fakeredis.FakeStrictRedis]:
     """Every test gets its own empty in-memory Redis; no server is needed."""
     connection = fakeredis.FakeStrictRedis()

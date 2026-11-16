@@ -4,8 +4,8 @@ import { useLoad } from "../hooks";
 import { SegmentBadge } from "./SegmentBadge";
 
 export function LeadDetailView({ leadId, onBack }: { leadId: number; onBack: () => void }) {
-  const lead = useLoad(() => api.getLead(leadId), [leadId]);
-  const history = useLoad(() => api.getScores(leadId), [leadId]);
+  const lead = useLoad(() => api.getLead(leadId), [leadId], 5000);
+  const history = useLoad(() => api.getScores(leadId), [leadId], 5000);
   const [message, setMessage] = useState<string | null>(null);
 
   async function rescore() {

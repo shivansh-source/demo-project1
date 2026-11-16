@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import batches, health, imports, jobs, leads
+from app.api import batches, crm, health, imports, jobs, leads
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(batches.router)
     app.include_router(leads.router)
     app.include_router(jobs.router)
+    app.include_router(crm.router)
     return app
 
 

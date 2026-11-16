@@ -92,9 +92,19 @@ Set `SKIP_DB=1` to reuse a Postgres you already have at `TEST_DATABASE_URL`. Cov
 
 ## Frontend
 
-A small React + TypeScript app (Vite) in `frontend/`: import CSV or JSON and see rejected rows,
-browse leads by segment with pagination, open a lead for its score, per-rule breakdown, explanation
-and score history (with a Rescore button), and inspect jobs (failed by default).
+A React + TypeScript app (Vite) in `frontend/`, styled after openeverest.io: light theme, blue brand
+palette, announcement bar, sticky header, cards.
+
+| Route | What it is |
+|---|---|
+| `#/home` | landing page: what the product does |
+| `#/how` | **How it works**: architecture diagram (inline SVG) and a step-by-step walkthrough |
+| `#/login` | sign-in with a **demo account**: `demo@leadqual.dev` / `demo1234` |
+| `#/dashboard` | needs sign-in: import CSV/JSON, browse leads by segment, lead detail (score breakdown, explanation, history, Rescore), **CRM** (provider, hot leads vs pushed, each push with its CRM id), jobs. Lists refresh every 4-5 s as the worker finishes jobs |
+
+**The demo login is not security.** It is a browser-only gate (`frontend/src/auth.ts`, state in
+`sessionStorage`) with public credentials, and the API behind it still has no authentication. Real
+auth (API keys or JWT) is one of the pending upgrades.
 
 ```bash
 make up                # API on :8000 and the worker
@@ -103,7 +113,8 @@ make frontend          # npm install + vite dev server on http://localhost:5173
 
 The dev server proxies `/api/*` to the API (`VITE_API_TARGET`, default `http://localhost:8000`), so
 the backend needs no CORS configuration. `npm run build` type-checks and produces `frontend/dist`.
-The frontend is not part of docker-compose: it is a dev-time UI, not a deployed service.
+The frontend is not part of docker-compose: it is a dev-time UI, not a deployed service. It has no
+automated tests; it is verified by `tsc`, a build and headless-browser screenshots.
 
 ## Example requests
 
@@ -120,6 +131,7 @@ curl 'localhost:8000/leads?segment=hot&limit=20&offset=0'
 curl localhost:8000/leads/1                           # latest score, breakdown, reasoning
 curl localhost:8000/leads/1/scores                    # full score history, newest first
 curl -X POST localhost:8000/leads/1/rescore           # queue a fresh scoring run (202)
+curl localhost:8000/crm                               # CRM provider and what was pushed
 curl 'localhost:8000/jobs?status=failed'              # inspect dead jobs and last_error
 ```
 
@@ -127,8 +139,8 @@ curl 'localhost:8000/jobs?status=failed'              # inspect dead jobs and la
 
 All configuration is environment variables (see `.env.example`). Integration placeholders
 (`ENRICHMENT_PROVIDER`, `ENRICHMENT_API_KEY`, `CRM_PROVIDER`, `CRM_API_TOKEN`, `ANTHROPIC_API_KEY`,
-`ANTHROPIC_MODEL`, `REASONING_ENABLED`) ship empty: an empty provider or model falls back to the
-built-in default (`mock`, `claude-haiku-5-5`) and an empty `REASONING_ENABLED` means `false`.
+`ANTHROPIC_MODEL`, `REASONING_ENABLED`, `REASONING_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`) ship empty: an empty provider or model falls back to the
+built-in default (`mock`, provider `groq`, model `openai/gpt-oss-20b`) and an empty `REASONING_ENABLED` means `false`.
 No secret is hardcoded and `.env` is git-ignored.
 
 Queue knobs: `REDIS_URL`, `QUEUE_NAME`, `JOB_MAX_ATTEMPTS`, `JOB_BACKOFF_BASE_SECONDS`,
@@ -157,9 +169,23 @@ never overwritten. The YAML is validated with Pydantic at start-up, so a typo fa
 The model sees the rule breakdown plus job title and company facts (no emails or names) and returns
 at most two plain sentences, stored only in `lead_scores.reasoning`. Nothing parses a number from
 the model, so it cannot change the score. `max_tokens` is capped. With `REASONING_ENABLED=false`
-(the default) no client is built and no API key is needed. If the call fails, the score stays,
-`reasoning_status` stays `pending`, and the `reason_lead` job retries with exponential backoff; after
-the last attempt it becomes `failed`.
+(the default) no client is built and no API key is needed.
+
+**Provider: Groq** (`REASONING_PROVIDER=groq`, the default), called through its OpenAI-compatible
+`/chat/completions` endpoint with `httpx`; Anthropic stays selectable with
+`REASONING_PROVIDER=anthropic`. To turn it on, put these in `.env` (git-ignored) and restart the worker:
+
+```
+REASONING_ENABLED=true
+GROQ_API_KEY=<your key>
+GROQ_MODEL=openai/gpt-oss-20b   # optional; Groq retires models, check its model list
+```
+
+Enabled without a key, the worker refuses to start. If a call fails (rate limit, outage, bad model
+name) the score stays, `reasoning_status` stays `pending`, and the `reason_lead` job retries with
+exponential backoff; after the last attempt it becomes `failed`. The Groq adapter is tested against a
+mocked HTTP transport only; it has not been run against the live API. Tests pin the AI and CRM
+settings to safe values, so a real key in `.env` can never be used by the test suite.
 
 ### CRM push
 Only `hot` scores are pushed. Idempotency key = `f"{lead_id}:{score_id}"`, claimed with

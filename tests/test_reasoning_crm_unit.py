@@ -94,11 +94,15 @@ def test_reasoning_disabled_needs_no_api_key() -> None:
 
 def test_reasoning_enabled_requires_a_key() -> None:
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-        build_reasoner(_settings(reasoning_enabled=True, anthropic_api_key=""))
+        build_reasoner(
+            _settings(reasoning_enabled=True, reasoning_provider="anthropic", anthropic_api_key="")
+        )
 
 
 def test_reasoning_enabled_builds_reasoner_without_network() -> None:
-    r = build_reasoner(_settings(reasoning_enabled=True, anthropic_api_key="test-key"))
+    r = build_reasoner(
+        _settings(reasoning_enabled=True, reasoning_provider="anthropic", anthropic_api_key="k")
+    )
     assert isinstance(r, AnthropicReasoner)
 
 
