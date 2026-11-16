@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     enrichment_api_key: str = ""
     crm_provider: str = "mock"
     crm_api_token: str = ""
+    # HubSpot (CRM_PROVIDER=hubspot). Custom property names are optional: HubSpot rejects
+    # properties that do not exist in the portal, so nothing custom is sent unless named.
+    hubspot_base_url: str = "https://api.hubapi.com"
+    hubspot_score_property: str = ""
+    hubspot_segment_property: str = ""
 
     reasoning_enabled: bool = False
     anthropic_api_key: str = ""

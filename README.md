@@ -16,8 +16,8 @@ This service answers three questions for every lead, and keeps the evidence:
 3. **What next?** A segment (`hot` / `nurture` / `disqualified`); hot leads go to the CRM exactly
    once per score.
 
-Status: base build, React frontend and the Redis + RQ upgrade are complete. The HubSpot adapter is
-next; the remaining upgrades are pending an owner decision (see the end of this file).
+Status: base build, React frontend, the Redis + RQ upgrade and the HubSpot CRM adapter are complete.
+The remaining upgrades are pending an owner decision (see the end of this file).
 
 ## Architecture
 
@@ -244,7 +244,7 @@ the handler and commits, so a handler's writes land together or not at all.
 | Piece | Mock | Behaviour |
 |---|---|---|
 | Enrichment | `MockEnrichmentProvider` | employee count, industry, country derived from `sha256(domain)`; `*.invalid` returns `None` |
-| CRM | `MockCrm` | in-memory, upserts by email, returns `mock-crm-N` (state is lost on restart) |
+| CRM | `MockCrm` (default) | in-memory, upserts by email, returns `mock-crm-N` (state is lost on restart). `CRM_PROVIDER=hubspot` swaps in the real adapter |
 | LLM | none in tests | tests inject a fake client; the real Anthropic API is never called in tests |
 
 Because the mock CRM lives in the worker's memory, `crm_pushes` rows survive restarts but the fake
@@ -256,13 +256,46 @@ CRM's own records do not. That is expected for a mock.
    CompanyData | None`; return `None` for "unknown", raise for transient errors so the job retries).
    Register it in `get_enrichment_provider` in `app/services/enrichment/__init__.py`, then set
    `ENRICHMENT_PROVIDER` and `ENRICHMENT_API_KEY`.
-2. **CRM**: implement `CrmClient.upsert_lead(lead, score, segment) -> str` as a true upsert keyed by
-   email, register it in `get_crm` (`app/services/crm/__init__.py`), set `CRM_PROVIDER` and
-   `CRM_API_TOKEN`. Idempotency, retries and the hot-only rule are already handled by the caller.
+2. **CRM**: HubSpot is built in (next section). For another CRM, implement
+   `CrmClient.upsert_lead(lead, score, segment) -> str` as a true upsert keyed by email, register it in
+   `get_crm` (`app/services/crm/__init__.py`) and set `CRM_PROVIDER` / `CRM_API_TOKEN`. Idempotency,
+   retries and the hot-only rule are already handled by the caller.
 3. **LLM reasoning**: set `REASONING_ENABLED=true`, `ANTHROPIC_API_KEY`, and optionally
    `ANTHROPIC_MODEL`. The worker fails at start-up if enabled without a key.
 4. **Scoring**: edit `config/scoring.yaml`; `rules_version` changes automatically and old scores keep
    the version they were computed with.
+
+## HubSpot CRM adapter
+
+`CRM_PROVIDER=hubspot` pushes hot leads to HubSpot as contacts (`app/services/crm/hubspot.py`).
+
+Set up (works the same against a developer test account / sandbox):
+1. In HubSpot: Settings, Integrations, Private Apps, create an app with scopes
+   `crm.objects.contacts.read` and `crm.objects.contacts.write`, and copy its access token.
+2. Put it in `.env`: `CRM_PROVIDER=hubspot`, `CRM_API_TOKEN=<token>`. Never commit it.
+3. Optional: create custom contact properties (e.g. a number `lead_score` and a text
+   `lead_segment`) and name them in `HUBSPOT_SCORE_PROPERTY` / `HUBSPOT_SEGMENT_PROPERTY`. They are
+   opt-in because HubSpot rejects unknown properties with a 400. Without them only the standard
+   fields are sent: email, first/last name, job title, company name and website.
+4. Restart the worker. A missing token fails at worker start-up, not on the first push.
+
+How it behaves:
+- One call per push: `POST /crm/v3/objects/contacts/batch/upsert` with `idProperty=email`, so HubSpot
+  creates or updates the contact and the returned contact id is stored in `crm_pushes.external_id`.
+- Idempotency is unchanged: the `{lead_id}:{score_id}` key is claimed first, so a repeated job never
+  calls HubSpot (tested). A rescore produces a new key and updates the same HubSpot contact.
+- Errors become typed exceptions the job retry already handles: 401/403 `HubSpotAuthError`,
+  429 `HubSpotRateLimited` (with `Retry-After` in the message), other 4xx/5xx and network errors
+  `HubSpotError`. A failed call rolls the idempotency claim back, so the retry starts clean.
+- A fresh `httpx.AsyncClient` is created per push because every push runs in its own event loop.
+- `httpx` is now a runtime dependency (it was dev-only) for the HTTP calls.
+
+**Not verified against real HubSpot.** I had no HubSpot account, so the adapter is tested against a
+mocked HTTP transport only (request shape, headers, body, every error path, and the full
+import-to-push pipeline). The request follows HubSpot's documented CRM v3 batch-upsert contract, but
+the first thing to do with a real sandbox token is push one lead and check the contact appears. If
+your portal rejects the upsert endpoint, `build_properties` and `upsert_lead` are the only places to
+change.
 
 ## Pending owner decisions
 
