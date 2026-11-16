@@ -1,0 +1,41 @@
+# Transparent lead-scoring rules. Score = sum of rule points, capped at 100.
+# rules_version = sha256 of this file's bytes, stored on every score row, so any edit here
+# is visible in score history.
+
+thresholds:
+  hot: 70        # score >= hot            -> "hot"
+  nurture: 40    # nurture <= score < hot  -> "nurture", below -> "disqualified"
+
+rules:
+  company_size:
+    # First band whose max_employees >= employee_count wins. A band with no max is the catch-all.
+    bands:
+      - { max_employees: 10, points: 5 }
+      - { max_employees: 50, points: 15 }
+      - { max_employees: 200, points: 25 }
+      - { max_employees: 1000, points: 35 }
+      - { points: 30 }          # very large companies: slower sales cycle
+
+  industry_fit:
+    default: 0
+    industries:                  # exact, case-insensitive match
+      software: 25
+      saas: 25
+      fintech: 20
+      healthcare: 15
+      consulting: 10
+      media: 5
+
+  seniority:
+    default: 0
+    # Whole-word, case-insensitive match against the job title. Highest matching tier wins.
+    tiers:
+      - points: 40
+        keywords: [founder, co-founder, ceo, cto, cfo, coo, cio, cmo, chief, owner]
+      - points: 30
+        keywords: [vp, svp, evp, vice president, head, director]
+      - points: 15
+        keywords: [manager, lead, principal]
+
+  engagement:
+    default: 0                   # no engagement data yet; reserved for future signals

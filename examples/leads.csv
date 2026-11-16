@@ -1,0 +1,11 @@
+email,company_domain,first_name,last_name,job_title
+jane.doe@acme.com,acme.com,Jane,Doe,VP Sales
+John.Smith@Globex.com,www.globex.com,John,Smith,Head of Growth
+amy@initech.io,initech.io,Amy,Lee,Software Engineer
+bob@umbrella.co,umbrella.co,Bob,Ray,Founder
+carol@hooli.com,hooli.com,Carol,Nguyen,Director of Marketing
+dave@piedpiper.com,piedpiper.com,Dave,Kim,CTO
+eve@stark.dev,stark.dev,Eve,Park,Intern
+not-an-email,acme.com,Bad,Row,Manager
+frank@,globex.com,Frank,Bad,Analyst
+gina@wayne.org,,Gina,NoDomain,Manager
