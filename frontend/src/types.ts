@@ -86,3 +86,23 @@ export interface Rescore {
   job_id: string | null;
   queued: boolean;
 }
+
+export interface CrmPush {
+  id: number;
+  lead_id: number;
+  email: string;
+  name: string | null;
+  company: string | null;
+  score: number;
+  status: string;
+  external_id: string | null;
+  created_at: string;
+}
+
+export interface CrmOverview {
+  provider: string;
+  live: boolean;
+  hot_leads: number;
+  pushed: number;
+  pushes: CrmPush[];
+}

@@ -18,6 +18,7 @@ export function LeadsTable({
   const { data, error, loading, reload } = useLoad(
     () => api.listLeads({ segment: segment || undefined, limit: PAGE_SIZE, offset }),
     [segment, offset, refreshKey],
+    5000,
   );
 
   const total = data?.total ?? 0;

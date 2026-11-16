@@ -5,7 +5,11 @@ import type { JobStatus } from "../types";
 
 export function JobsPanel() {
   const [status, setStatus] = useState<JobStatus | "">("failed");
-  const { data, error, loading, reload } = useLoad(() => api.listJobs(status || undefined), [status]);
+  const { data, error, loading, reload } = useLoad(
+    () => api.listJobs(status || undefined),
+    [status],
+    5000,
+  );
 
   return (
     <section>

@@ -4,11 +4,15 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-5-5"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
 
 _DEFAULTS = {
     "enrichment_provider": "mock",
     "crm_provider": "mock",
     "anthropic_model": DEFAULT_ANTHROPIC_MODEL,
+    "reasoning_provider": "groq",
+    "groq_model": DEFAULT_GROQ_MODEL,
+    "groq_base_url": "https://api.groq.com/openai/v1",
 }
 
 
@@ -40,6 +44,12 @@ class Settings(BaseSettings):
     hubspot_segment_property: str = ""
 
     reasoning_enabled: bool = False
+    reasoning_provider: str = "groq"  # "groq" or "anthropic"
+    groq_api_key: str = ""
+    groq_model: str = DEFAULT_GROQ_MODEL
+    # gpt-oss models "think" first and can use the whole token cap before answering.
+    groq_reasoning_effort: str = "low"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
     anthropic_api_key: str = ""
     anthropic_model: str = DEFAULT_ANTHROPIC_MODEL
     reasoning_max_tokens: int = 150
@@ -47,7 +57,15 @@ class Settings(BaseSettings):
     scoring_config_path: str = "config/scoring.yaml"
 
     # .env.example ships these keys with empty values; treat empty as "use the default".
-    @field_validator("enrichment_provider", "crm_provider", "anthropic_model", mode="before")
+    @field_validator(
+        "enrichment_provider",
+        "crm_provider",
+        "anthropic_model",
+        "reasoning_provider",
+        "groq_model",
+        "groq_base_url",
+        mode="before",
+    )
     @classmethod
     def _empty_means_default(cls, v: object, info: object) -> object:
         if isinstance(v, str) and v.strip() == "":

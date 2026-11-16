@@ -1,4 +1,4 @@
-import type { Batch, Job, JobStatus, LeadDetail, LeadList, Rescore, Score, Segment } from "./types";
+import type { Batch, CrmOverview, Job, JobStatus, LeadDetail, LeadList, Rescore, Score, Segment } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, init);
@@ -39,6 +39,7 @@ export const api = {
     return request<LeadList>(`/leads?${query}`);
   },
 
+  crm: () => request<CrmOverview>("/crm"),
   getLead: (id: number) => request<LeadDetail>(`/leads/${id}`),
   getScores: (id: number) => request<Score[]>(`/leads/${id}/scores`),
   rescore: (id: number) => request<Rescore>(`/leads/${id}/rescore`, { method: "POST" }),

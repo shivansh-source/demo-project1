@@ -129,3 +129,20 @@ def test_openapi_lists_every_endpoint(client: TestClient) -> None:
     }
     assert expected <= set(paths)
     assert client.get("/docs").status_code == 200
+
+
+def test_crm_overview_lists_pushes(client: TestClient, session: Session, engine: Engine) -> None:
+    empty = client.get("/crm").json()
+    assert empty["provider"] == "mock" and empty["live"] is False and empty["pushes"] == []
+
+    seed_lead(session, "CEO", n=1)
+    seed_lead(session, "Engineer", employees=5, industry="retail", n=2)
+    make_runtime(engine)
+    drain()
+
+    body = client.get("/crm").json()
+    assert (body["hot_leads"], body["pushed"]) == (1, 1)
+    (push,) = body["pushes"]
+    assert push["email"] == "x1@co1.com" and push["score"] == 100
+    assert push["status"] == "pushed" and push["external_id"] == "mock-crm-1"
+    assert push["company"] == "Co"

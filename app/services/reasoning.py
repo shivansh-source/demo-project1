@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import anthropic
+import httpx
 
 from app.core.config import Settings
 
@@ -87,11 +88,77 @@ class AnthropicReasoner:
         return explanation
 
 
+class GroqReasoner:
+    """Explanations from Groq's OpenAI-compatible chat API (`/chat/completions`)."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        max_tokens: int,
+        *,
+        base_url: str = "https://api.groq.com/openai/v1",
+        reasoning_effort: str = "low",
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._max_tokens = max_tokens
+        self._base_url = base_url.rstrip("/")
+        self._reasoning_effort = reasoning_effort
+        self._transport = transport
+
+    def explain(self, facts: ReasoningInput) -> str:
+        body = {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "temperature": 0.2,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_prompt(facts)},
+            ],
+        }
+        if self._reasoning_effort and self._model.startswith("openai/gpt-oss"):
+            # Without this the model can spend the whole max_tokens thinking and return nothing.
+            body["reasoning_effort"] = self._reasoning_effort
+        with httpx.Client(timeout=CLIENT_TIMEOUT_SECONDS, transport=self._transport) as client:
+            response = client.post(
+                f"{self._base_url}/chat/completions",
+                json=body,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+            )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Groq returned {response.status_code}: {response.text[:300]}")
+        try:
+            text = response.json()["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise RuntimeError("Groq response had no message content") from exc
+        explanation = limit_sentences(text)
+        if not explanation:
+            raise ValueError("model returned an empty explanation")
+        return explanation
+
+
 def build_reasoner(settings: Settings) -> Reasoner | None:
     """None when REASONING_ENABLED=false: the system then needs no API key at all."""
     if not settings.reasoning_enabled:
         return None
-    if not settings.anthropic_api_key:
-        raise ValueError("REASONING_ENABLED=true requires ANTHROPIC_API_KEY")
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=CLIENT_TIMEOUT_SECONDS)
-    return AnthropicReasoner(client, settings.anthropic_model, settings.reasoning_max_tokens)
+    provider = settings.reasoning_provider
+    if provider == "groq":
+        if not settings.groq_api_key:
+            raise ValueError("REASONING_PROVIDER=groq requires GROQ_API_KEY")
+        return GroqReasoner(
+            settings.groq_api_key,
+            settings.groq_model,
+            settings.reasoning_max_tokens,
+            base_url=settings.groq_base_url,
+            reasoning_effort=settings.groq_reasoning_effort,
+        )
+    if provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise ValueError("REASONING_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+        client = anthropic.Anthropic(
+            api_key=settings.anthropic_api_key, timeout=CLIENT_TIMEOUT_SECONDS
+        )
+        return AnthropicReasoner(client, settings.anthropic_model, settings.reasoning_max_tokens)
+    raise ValueError(f"unknown REASONING_PROVIDER: {provider!r}")

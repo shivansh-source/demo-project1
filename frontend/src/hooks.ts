@@ -8,15 +8,25 @@ export interface Loaded<T> {
 }
 
 /** Runs `load` on mount and whenever `deps` change; exposes a manual reload. */
-export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): Loaded<T> {
+export function useLoad<T>(
+  load: () => Promise<T>,
+  deps: unknown[],
+  pollMs?: number,
+): Loaded<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
+  // Background refresh: the worker finishes jobs after the page has loaded.
+  useEffect(() => {
+    if (!pollMs) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), pollMs);
+    return () => window.clearInterval(id);
+  }, [pollMs]);
+
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     load()
       .then((result) => {
         if (!cancelled) {
