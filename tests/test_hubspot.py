@@ -184,3 +184,33 @@ def test_hubspot_outage_keeps_the_lead_and_retries(
     drain()
     session.expire_all()
     assert session.scalars(select(CrmPush)).one().external_id == "77"
+
+
+def test_rejections_are_permanent_but_outages_are_retryable() -> None:
+    from app.queue.errors import PermanentJobError
+    from app.services.crm.hubspot import HubSpotRejected
+
+    def fail_with(status: int) -> Exception:
+        with pytest.raises(HubSpotError) as info:
+            push(HubSpotCrm(TOKEN, transport=Recorder(status, {"message": "x"}).transport()))
+        return info.value
+
+    assert isinstance(fail_with(400), HubSpotRejected)
+    assert isinstance(fail_with(400), PermanentJobError)
+    assert isinstance(fail_with(401), PermanentJobError)
+    assert not isinstance(fail_with(429), PermanentJobError)  # rate limit: retry later
+    assert not isinstance(fail_with(503), PermanentJobError)  # outage: retry later
+
+
+@pytest.mark.integration
+def test_invalid_email_is_not_retried(session: Session, engine: Engine) -> None:
+    from tests.helpers import jobs
+
+    seed_lead(session, "CEO")
+    body = {"message": "Property values were not valid: INVALID_EMAIL"}
+    rec = Recorder(400, body)
+    make_runtime(engine, crm=HubSpotCrm(TOKEN, transport=rec.transport()))
+    drain()
+    assert len(rec.requests) == 1  # one call, no retry storm
+    (failed,) = [j for j in jobs("failed") if j.type == "push_crm"]
+    assert "INVALID_EMAIL" in (failed.last_error or "")

@@ -116,6 +116,23 @@ the backend needs no CORS configuration. `npm run build` type-checks and produce
 The frontend is not part of docker-compose: it is a dev-time UI, not a deployed service. It has no
 automated tests; it is verified by `tsc`, a build and headless-browser screenshots.
 
+## Live demo (the 2-minute version)
+
+Sign in with the demo account, open **Overview** and press **Run live demo**. Nine fictional leads
+(at `*.example.com`, reserved so they can never be real companies) go in, and the screen shows them
+moving through the pipeline in real time: Imported, Enriched, Scored, AI explained, Sent to CRM.
+Hot leads appear on the right with their score and the AI's one-paragraph reason; clicking one opens
+a lead page with a score gauge, the AI summary and a points-per-rule breakdown. With HubSpot
+connected, the hot leads are in your HubSpot contacts a few seconds later.
+
+To see the score inside HubSpot too, create two contact properties in HubSpot (Settings, Properties,
+Create property): `lead_score` (number) and `lead_segment` (single-line text). Then add
+`HUBSPOT_SCORE_PROPERTY=lead_score` and `HUBSPOT_SEGMENT_PROPERTY=lead_segment` to `.env` and restart.
+(The app cannot create them itself unless the key has the `crm.schemas.contacts.write` scope.)
+
+`GET /stats` (optionally `?since=<time>`) powers the overview: leads per pipeline stage, segment
+counts and the top hot leads.
+
 ## Example requests
 
 ```bash
@@ -226,6 +243,14 @@ the handler and commits, so a handler's writes land together or not at all.
   would fail a handler that already committed and double its effects). The cure is a transactional
   outbox table drained by a relay; not built, since re-importing or `POST /leads/{id}/rescore`
   recovers a missed lead. The `jobs` table was dropped (migration `0003`, reversible).
+- **Verified on the real Docker stack** (Postgres 16, Redis 7, forking RQ worker, Groq, HubSpot):
+  `docker compose up` runs migrations, and the live demo completes end to end. Compose loads your
+  optional `.env` (keys) on top of `.env.example`; host ports are overridable with
+  `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `API_HOST_PORT` if 5432/6379/8000 are taken.
+- **Retry only what can succeed.** CRM rejections that can never pass (invalid email, bad token:
+  4xx except 429) raise a `PermanentJobError` and fail at once instead of retrying 5 times; rate
+  limits, outages and network errors still retry with backoff. A dropped Redis connection while
+  handing a job over after a commit is retried 3 times before the job is logged as lost.
 - **RQ worker needs `fork()`**, so it runs in Linux/Docker, not natively on Windows. Tests use RQ's
   `SimpleWorker` (no fork) against `fakeredis`, which is what runs in CI and in `make test`.
 - **Sync SQLAlchemy + psycopg 3.** API and worker use plain synchronous sessions; the

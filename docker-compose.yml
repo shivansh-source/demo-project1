@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: leadgen
       POSTGRES_DB: leadgen
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
@@ -28,12 +28,15 @@ services:
   api:
     build: .
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    env_file: [.env.example]
+    env_file:
+      - .env.example
+      - path: .env  # your local keys, optional and git-ignored
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://leadgen:leadgen@db:5432/leadgen
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -43,7 +46,10 @@ services:
   worker:
     build: .
     command: python -m app.worker
-    env_file: [.env.example]
+    env_file:
+      - .env.example
+      - path: .env  # your local keys, optional and git-ignored
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://leadgen:leadgen@db:5432/leadgen
       REDIS_URL: redis://redis:6379/0

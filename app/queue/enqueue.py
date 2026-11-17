@@ -11,6 +11,7 @@ and lost (the data is saved, the work is not queued). The fix is an outbox table
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import timedelta
 from typing import Any
@@ -120,12 +121,28 @@ def enqueue_deferred(
     _send(job_type, payload, job_id, max_attempts, delay_seconds)
 
 
+SEND_ATTEMPTS = 3
+SEND_RETRY_DELAY_SECONDS = 0.2
+
+
+def _send_with_retry(job_type: str, payload: dict[str, Any], job_id: str, attempts: int) -> None:
+    """A dropped Redis connection is usually transient: redis-py reconnects on the next call."""
+    for attempt in range(1, SEND_ATTEMPTS + 1):
+        try:
+            _send(job_type, payload, job_id, attempts)
+            return
+        except Exception:
+            if attempt == SEND_ATTEMPTS:
+                raise
+            time.sleep(SEND_RETRY_DELAY_SECONDS * attempt)
+
+
 @event.listens_for(Session, "after_commit")
 def _flush_pending(session: Session) -> None:
     pending = session.info.pop(_PENDING_KEY, [])
     for job_type, payload, job_id, attempts in pending:
         try:
-            _send(job_type, payload, job_id, attempts)
+            _send_with_retry(job_type, payload, job_id, attempts)
         except Exception:
             log.exception("committed, but could not enqueue %s (%s)", job_type, job_id)
 
