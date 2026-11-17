@@ -106,3 +106,17 @@ export interface CrmOverview {
   pushed: number;
   pushes: CrmPush[];
 }
+
+export interface Stats {
+  pipeline: { imported: number; enriched: number; scored: number; explained: number; pushed: number };
+  segments: { hot: number; nurture: number; disqualified: number };
+  hot_leads: {
+    lead_id: number;
+    name: string | null;
+    email: string;
+    job_title: string | null;
+    company: string | null;
+    score: number;
+    reasoning: string | null;
+  }[];
+}

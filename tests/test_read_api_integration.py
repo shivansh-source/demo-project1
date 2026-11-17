@@ -146,3 +146,30 @@ def test_crm_overview_lists_pushes(client: TestClient, session: Session, engine:
     assert push["email"] == "x1@co1.com" and push["score"] == 100
     assert push["status"] == "pushed" and push["external_id"] == "mock-crm-1"
     assert push["company"] == "Co"
+
+
+def test_stats_counts_each_pipeline_stage(
+    client: TestClient, session: Session, engine: Engine
+) -> None:
+    before = client.get("/stats").json()
+    assert before["pipeline"]["imported"] == 0 and before["hot_leads"] == []
+
+    seed_lead(session, "CEO", n=1)
+    seed_lead(session, "Engineer", employees=5, industry="retail", n=2)
+    make_runtime(engine, reasoner=FakeReasoner())
+    drain()
+
+    body = client.get("/stats").json()
+    assert body["pipeline"] == {
+        "imported": 2,
+        "enriched": 2,
+        "scored": 2,
+        "explained": 2,
+        "pushed": 1,
+    }
+    assert body["segments"] == {"hot": 1, "nurture": 0, "disqualified": 1}
+    (hot,) = body["hot_leads"]
+    assert hot["score"] == 100 and hot["reasoning"].startswith("Scored 100")
+
+    future = client.get("/stats", params={"since": "2999-01-01T00:00:00Z"}).json()
+    assert future["pipeline"]["imported"] == 0

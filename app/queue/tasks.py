@@ -8,7 +8,7 @@ from typing import Any
 from rq import get_current_job
 
 from app.queue.enqueue import enqueue_deferred
-from app.queue.errors import DeferJob
+from app.queue.errors import DeferJob, PermanentJobError
 from app.queue.runtime import get_runtime
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,8 @@ def run_job(job_type: str, payload: dict[str, Any]) -> None:
         if job is not None:  # RQ keeps no error for attempts that will be retried
             job.meta["last_error"] = f"{type(exc).__name__}: {exc}"[:2000]
             job.save_meta()  # type: ignore[no-untyped-call]
+        if isinstance(exc, PermanentJobError) and job is not None:
+            job.retries_left = 0  # retrying cannot help: fail now, run the final-failure hook
         final = job is None or not job.retries_left
         hook = runtime.final_failure_hooks.get(job_type)
         if final and hook is not None:

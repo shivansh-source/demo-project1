@@ -3,6 +3,7 @@ import { api } from "./api";
 import { isLoggedIn, logout } from "./auth";
 import { ImportPanel } from "./components/ImportPanel";
 import { CrmPanel } from "./components/CrmPanel";
+import { Overview } from "./components/Overview";
 import { JobsPanel } from "./components/JobsPanel";
 import { LeadDetailView } from "./components/LeadDetail";
 import { LeadsTable } from "./components/LeadsTable";
@@ -12,7 +13,7 @@ import { Landing } from "./pages/Landing";
 import { LoginPage } from "./pages/Login";
 
 type Page = "home" | "how" | "login" | "dashboard";
-type Tab = "leads" | "import" | "crm" | "jobs";
+type Tab = "overview" | "leads" | "import" | "crm" | "jobs";
 const PAGES: Page[] = ["home", "how", "login", "dashboard"];
 
 function pageFromHash(): Page {
@@ -23,7 +24,7 @@ function pageFromHash(): Page {
 export default function App() {
   const [page, setPage] = useState<Page>(pageFromHash());
   const [authed, setAuthed] = useState(isLoggedIn());
-  const [tab, setTab] = useState<Tab>("leads");
+  const [tab, setTab] = useState<Tab>("overview");
   const [selected, setSelected] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const health = useLoad(() => api.health(), []);
@@ -90,7 +91,7 @@ export default function App() {
         {view === "dashboard" && (
           <>
             <div className="tabs">
-              {(["leads", "import", "crm", "jobs"] as Tab[]).map((t) => (
+              {(["overview", "leads", "import", "crm", "jobs"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   className={tab === t ? "tab active" : "tab"}
@@ -99,10 +100,18 @@ export default function App() {
                     setSelected(null);
                   }}
                 >
-                  {t}
+                  {t === "crm" ? "CRM" : t}
                 </button>
               ))}
             </div>
+            {tab === "overview" && (
+              <Overview
+                onOpenLead={(id) => {
+                  setSelected(id);
+                  setTab("leads");
+                }}
+              />
+            )}
             {tab === "import" && <ImportPanel onImported={() => setRefreshKey((k) => k + 1)} />}
             {tab === "leads" &&
               (selected === null ? (

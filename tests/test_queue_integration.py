@@ -224,3 +224,50 @@ def test_deferred_job_is_rescheduled_without_using_an_attempt(
     stored = Job.fetch("enrich_company-company_id-1-defer2", connection=get_connection())
     assert stored.meta["max_attempts"] == 3
     assert stored.args == ("enrich_company", {"company_id": 1})
+
+
+def test_transient_redis_error_after_commit_is_retried(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_send = enqueue_module._send
+    calls: list[int] = []
+
+    def flaky(*args: Any, **kwargs: Any) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            raise ConnectionError("connection closed by server")
+        real_send(*args, **kwargs)
+
+    monkeypatch.setattr(enqueue_module, "_send", flaky)
+    monkeypatch.setattr(enqueue_module, "SEND_RETRY_DELAY_SECONDS", 0)
+    enqueue_job(session, "score_lead", {"lead_id": 1})
+    session.commit()
+    assert len(calls) == 2
+    assert job_types("queued") == ["score_lead"]  # not lost
+
+
+def test_permanent_error_fails_at_once_without_retries(
+    session: Session, engine: Engine, settings_env: Any
+) -> None:
+    from app.queue.errors import PermanentJobError
+
+    settings_env(job_backoff_base_seconds=0)
+    calls: list[int] = []
+    seen: list[dict[str, Any]] = []
+
+    def rejected(_s: Session, _p: dict[str, Any], _c: HandlerContext) -> None:
+        calls.append(1)
+        raise PermanentJobError("CRM rejected the email")
+
+    make_runtime(
+        engine,
+        handlers={"reason_lead": rejected},
+        hooks={"reason_lead": lambda _s, payload: seen.append(payload)},
+    )
+    enqueue_job(session, "reason_lead", {"score_id": 3}, max_attempts=5)
+    session.commit()
+    drain()
+    assert len(calls) == 1  # not retried 5 times
+    (failed,) = jobs("failed")
+    assert "CRM rejected the email" in (failed.last_error or "")
+    assert seen == [{"score_id": 3}]  # final-failure hook still runs

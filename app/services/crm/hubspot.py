@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.models import Lead, LeadScore
+from app.queue.errors import PermanentJobError
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +26,13 @@ class HubSpotError(Exception):
     """A HubSpot call failed. The job runner retries it with backoff."""
 
 
-class HubSpotAuthError(HubSpotError):
-    """401/403: the token is wrong, expired or missing the crm.objects.contacts.write scope."""
+class HubSpotAuthError(HubSpotError, PermanentJobError):
+    """401/403: the token is wrong, expired or missing the crm.objects.contacts.write scope.
+    Not retried: the same token will be rejected again."""
+
+
+class HubSpotRejected(HubSpotError, PermanentJobError):
+    """Other 4xx (e.g. an invalid email): HubSpot refused the data itself. Not retried."""
 
 
 class HubSpotRateLimited(HubSpotError):
@@ -100,7 +106,11 @@ class HubSpotCrm:
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After", "?")
             raise HubSpotRateLimited(f"HubSpot rate limit hit (Retry-After: {retry_after}s)")
-        if response.status_code >= 400:
+        if 400 <= response.status_code < 500:
+            raise HubSpotRejected(
+                f"HubSpot rejected the contact ({response.status_code}): {_error_message(response)}"
+            )
+        if response.status_code >= 500:
             raise HubSpotError(
                 f"HubSpot returned {response.status_code}: {_error_message(response)}"
             )

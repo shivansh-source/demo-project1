@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useLoad } from "../hooks";
+import { BreakdownBars, ScoreGauge } from "./ScoreGauge";
 import { SegmentBadge } from "./SegmentBadge";
 
 export function LeadDetailView({ leadId, onBack }: { leadId: number; onBack: () => void }) {
@@ -54,7 +55,41 @@ export function LeadDetailView({ leadId, onBack }: { leadId: number; onBack: () 
         {d.email} {d.job_title ? `- ${d.job_title}` : ""}
       </p>
 
+      {score ? (
+        <div className="card story">
+          <ScoreGauge score={score.score} />
+          <div className="story-text">
+            <div className="story-kicker">AI summary</div>
+            <p className="story-reason">
+              {score.reasoning ?? <span className="muted">({reasoningNote(score.reasoning_status)})</span>}
+            </p>
+            <p className="muted small">
+              The score comes only from the rules below. The AI explains it; it never changes it.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <p className="muted">Not scored yet. The worker is still processing it.</p>
+        </div>
+      )}
+
       <div className="grid-2">
+        <div className="card">
+          <h3>Why this score</h3>
+          {score ? (
+            <>
+              <BreakdownBars rules={score.rule_breakdown.rules} />
+              {score.rule_breakdown.capped && (
+                <p className="muted small">Raw total {score.rule_breakdown.raw_total} was capped at 100.</p>
+              )}
+              <p className="muted mono">rules version {score.rules_version.slice(0, 12)}</p>
+            </>
+          ) : (
+            <p className="muted">Waiting for the first score.</p>
+          )}
+        </div>
+
         <div className="card">
           <h3>Company</h3>
           <dl>
@@ -71,46 +106,6 @@ export function LeadDetailView({ leadId, onBack }: { leadId: number; onBack: () 
             <dt>Enrichment</dt>
             <dd>{d.company.enrichment_status}</dd>
           </dl>
-        </div>
-
-        <div className="card">
-          <h3>Latest score</h3>
-          {score ? (
-            <>
-              <p className="big">
-                {score.score}
-                <span className="muted"> / 100</span>
-              </p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Rule</th>
-                    <th>Points</th>
-                    <th>Why</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(score.rule_breakdown.rules).map(([rule, entry]) => (
-                    <tr key={rule}>
-                      <td>{rule}</td>
-                      <td>{entry.points}</td>
-                      <td>{entry.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {score.rule_breakdown.capped && (
-                <p className="muted">Raw total {score.rule_breakdown.raw_total} was capped at 100.</p>
-              )}
-              <p>
-                <strong>Explanation:</strong>{" "}
-                {score.reasoning ?? <span className="muted">({reasoningNote(score.reasoning_status)})</span>}
-              </p>
-              <p className="muted mono">rules {score.rules_version.slice(0, 12)}</p>
-            </>
-          ) : (
-            <p className="muted">Not scored yet. The worker is probably still processing it.</p>
-          )}
         </div>
       </div>
 
